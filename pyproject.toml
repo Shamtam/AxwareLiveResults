@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setup-tools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axware"
+dynamic = ["version"]
+dependencies = [
+  "beautifulsoup4==4.13.3",
+]
+requires-python = ">=3.13"
+authors = [
+  {name = "Shamit Som", email = "shamitsom@gmail.com"},
+]
+description = "AxWare Python Tools"
+license = "MIT"
+license-files = ["LICEN[CS]E.*"]
+keywords = ["axware", "autocross", "parser"]
+classifiers = [
+  "Programming Language :: Python"
+]
