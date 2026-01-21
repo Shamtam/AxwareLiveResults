@@ -11,10 +11,7 @@ from bs4 import BeautifulSoup
 _logger = logging.getLogger(__name__)
 
 _re_time = re.compile(r"^\s*(?P<raw_time>\d+\.\d+)(\+(?P<penalty>.+?))?\s*$")
-_re_run = re.compile(r"^\s*Run\s*(?P<num>\d+)(\s*..)?\s*$")
 
-
-# TODO: create 'run' obj that stores raw time + penalty, can return raw time, effective time, etc.
 def parse_time(raw_value: str | None) -> Tuple[float, int, str] | None:
     try:
         if raw_value is not None and (match := _re_time.match(raw_value)):
@@ -55,12 +52,9 @@ def parse_axware_live_results(fpath: str) -> list[dict[str, Any]]:
     # extract all headers
     headers = [t.string.strip() for t in header_row.find_all("th")]
 
-    # check if results file is multirow
+    # check if results file is multirow formatted
     multirow = False
     for header in headers:
-        if "Run" not in header:
-            continue
-
         if ".." in header:
             multirow = True
             break
@@ -71,11 +65,13 @@ def parse_axware_live_results(fpath: str) -> list[dict[str, Any]]:
     # only used for multirow mode
     current_entry = None
     current_runs = None
+    current_row = 0
 
     for result in result_rows:
         row_data = result.find_all("td")
         entry = {}
-        runs = []
+        row_runs = []
+
         for header, raw_value in zip(headers, row_data):
 
             text = raw_value.text.strip()
@@ -108,42 +104,55 @@ def parse_axware_live_results(fpath: str) -> list[dict[str, Any]]:
                 if value is None:
                     continue
 
-                run_num = int(_re_run.match(header).group("num"))
-                runs.append(value)
+                row_runs.append(value)
 
             else:
                 entry[header] = value
 
+        # for multi-day events, multirow mode is guaranteed
         if multirow:
             # new entry, create new dictionary
             if row_data[0].text:
 
                 # add previous entry to output results
                 if current_entry:
-                    current_entry["Runs"] = current_runs
+                    current_entry["runs"].append(current_runs)
                     results.append(current_entry)
 
                 current_entry = {}
                 current_entry.update(entry)
-                current_runs = runs
+                current_entry["Diff."] = None
+                current_entry["runs"] = []
+                current_runs = row_runs
+                current_row = 0
 
             # next row for current entry, append runs to existing entry
             else:
 
+                # in multiday-files, terminate day1 results when encountering 2nd day row
+                if(
+                    "Day" in entry
+                    and entry["Day"] == "D2"
+                ):
+                    current_entry["runs"].append(current_runs)
+                    current_runs = []
+
                 # diff is stored in "Total" column in second row when in multirow
-                if "Diff." not in current_entry:
+                if current_entry["Diff."] is None and current_row == 1:
                     current_entry["Diff."] = entry["Total"]
 
-                for run in runs:
+                for run in row_runs:
                     current_runs.append(run)
 
+            current_row += 1
+
         else:
-            entry["Runs"] = current_runs
+            entry["runs"] = [row_runs]
             results.append(entry)
 
     # append final entry to results in multirow mode
     if multirow:
-        current_entry["Runs"] = current_runs
+        current_entry["runs"].append(current_runs)
         results.append(current_entry)
 
     return results
